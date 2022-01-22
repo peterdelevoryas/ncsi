@@ -38,6 +38,36 @@ struct ncsi_header {
   uint32_t reserved3;
 };
 
+enum NcsiCommand {
+  CLEAR_INITIAL_STATE = 0x00,
+  SELECT_PACKAGE = 0x01,
+  DESELECT_PACKAGE = 0x02,
+  ENABLE_CHANNEL = 0x03,
+  DISABLE_CHANNEL = 0x04,
+  RESET_CHANNEL = 0x05,
+  ENABLE_CHANNEL_NETWORK_TX = 0x06,
+  DISABLE_CHANNEL_NETWORK_TX = 0x07,
+  AEN_ENABLE = 0x08,
+  SET_LINK = 0x09,
+  GET_LINK_STATUS = 0x0A,
+  SET_VLAN_FILTER = 0x0B,
+  ENABLE_VLAN = 0x0C,
+  DISABLE_VLAN = 0x0D,
+  SET_MAC_ADDRESS = 0x0E,
+  ENABLE_BROADCAST_FILTERING = 0x10,
+  DISABLE_BROADCAST_FILTERING = 0x11,
+  ENABLE_GLOBAL_MULTICAST_FILTERING = 0x12,
+  DISABLE_GLOBAL_MULTICAST_FILTERING = 0x13,
+  SET_NCSI_FLOW_CONTROL = 0x14,
+  GET_VERSION_ID = 0x15,
+  GET_CAPABILITIES = 0x16,
+  GET_PARAMETERS = 0x17,
+  GET_CONTROLLER_PACKET_STATISTICS = 0x18,
+  GET_NCSI_STATISTICS = 0x19,
+  GET_NCSI_PASSTHROUGH_STATISTICS = 0x1A,
+  OEM_COMMAND = 0x50,
+};
+
 static const char* ncsi_type_to_string(uint8_t type) {
   type &= 0x80 - 1;
   switch (type) {
@@ -122,6 +152,31 @@ static void print_packet(const uint8_t* pkt, int len) {
          ncsi_type_to_string(ncsi.control_packet_type));
 }
 
+static void handle_ncsi_command(const ncsi_header& command) {
+  switch (command.control_packet_type) {
+    default:
+      printf("Unimplemented NCSI command: %02x %s\n",
+             command.control_packet_type,
+             ncsi_type_to_string(command.control_packet_type));
+      break;
+  }
+}
+
+static void handle_packet(const uint8_t* pkt, int len) {
+  print_packet(pkt, len);
+
+  auto eth = reinterpret_cast<const ether_header&>(*pkt);
+  if (ntohs(eth.ether_type) != 0x88f8) {
+    return;
+  }
+  if (uint32_t(len) < ETH_HLEN + sizeof(ncsi_header)) {
+    printf(": len is too small for NCSI header: %d\n", len);
+    return;
+  }
+  auto command = reinterpret_cast<const ncsi_header&>(*&pkt[ETH_HLEN]);
+  handle_ncsi_command(command);
+}
+
 int main(int argc, char** argv) {
   signal(SIGINT, handle_ctrl_c);
 
@@ -166,7 +221,7 @@ int main(int argc, char** argv) {
         perror("recv 0");
         break;
       default:
-        print_packet(buf, static_cast<int>(n));
+        handle_packet(buf, static_cast<int>(n));
         break;
     }
   }
