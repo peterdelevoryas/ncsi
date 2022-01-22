@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
+#include <cstring>
 #include <sys/socket.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
@@ -25,7 +26,7 @@ static void print_eth_addr(const uint8_t addr[ETH_ALEN]) {
   }
 }
 
-struct ncsi_header {
+struct NcsiHeader {
   uint8_t mc_id;
   uint8_t header_revision;
   uint8_t reserved0;
@@ -143,17 +144,29 @@ static void print_packet(const uint8_t* pkt, int len) {
     printf("\n");
     return;
   }
-  if (uint32_t(len) < ETH_HLEN + sizeof(ncsi_header)) {
+  if (uint32_t(len) < ETH_HLEN + sizeof(NcsiHeader)) {
     printf(": len is too small for NCSI header: %d\n", len);
     return;
   }
-  auto ncsi = reinterpret_cast<const ncsi_header&>(*&pkt[ETH_HLEN]);
+  auto ncsi = reinterpret_cast<const NcsiHeader&>(*&pkt[ETH_HLEN]);
   printf(" %02x %s\n", ncsi.control_packet_type,
          ncsi_type_to_string(ncsi.control_packet_type));
 }
 
-static void handle_ncsi_command(const ncsi_header& command) {
+constexpr auto NCSI_MAX_PAYLOAD = 172;
+constexpr auto NCSI_MAX_LEN = sizeof(NcsiHeader) + NCSI_MAX_PAYLOAD + 4;
+
+static void deselect_package(const NcsiHeader& command) {
+  uint8_t response[ETH_HLEN + NCSI_MAX_LEN];
+  //uint32_t len = ETH_HLEN;
+  memset(response, 0xFF, ETH_ALEN * 2);
+}
+
+static void handle_ncsi_command(const NcsiHeader& command) {
   switch (command.control_packet_type) {
+    case DESELECT_PACKAGE:
+      deselect_package(command);
+      break;
     default:
       printf("Unimplemented NCSI command: %02x %s\n",
              command.control_packet_type,
@@ -169,11 +182,11 @@ static void handle_packet(const uint8_t* pkt, int len) {
   if (ntohs(eth.ether_type) != 0x88f8) {
     return;
   }
-  if (uint32_t(len) < ETH_HLEN + sizeof(ncsi_header)) {
+  if (uint32_t(len) < ETH_HLEN + sizeof(NcsiHeader)) {
     printf(": len is too small for NCSI header: %d\n", len);
     return;
   }
-  auto command = reinterpret_cast<const ncsi_header&>(*&pkt[ETH_HLEN]);
+  auto command = reinterpret_cast<const NcsiHeader&>(*&pkt[ETH_HLEN]);
   handle_ncsi_command(command);
 }
 
