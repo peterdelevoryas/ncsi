@@ -9,12 +9,127 @@
 #include <net/if.h>
 #include <signal.h>
 
+static int SOCKET = -1;
+
+static void handle_ctrl_c(int sig) {
+  close(SOCKET);
+  exit(0);
+}
+
+static void print_eth_addr(const uint8_t addr[ETH_ALEN]) {
+  for (int i = 0; i < ETH_ALEN; i++) {
+    if (i) {
+      printf(":");
+    }
+    printf("%02x", addr[i]);
+  }
+}
+
+struct ncsi_header {
+  uint8_t mc_id;
+  uint8_t header_revision;
+  uint8_t reserved0;
+  uint8_t iid;
+  uint8_t control_packet_type;
+  uint8_t channel_id;
+  uint8_t reserved1;
+  uint8_t payload_length;
+  uint32_t reserved2;
+  uint32_t reserved3;
+};
+
+static const char* ncsi_type_to_string(uint8_t type) {
+  type &= 0x80 - 1;
+  switch (type) {
+    case 0x00:
+      return "Clear Initial State";
+    case 0x01:
+      return "Select Package";
+    case 0x02:
+      return "Deselect Package";
+    case 0x03:
+      return "Enable Channel";
+    case 0x04:
+      return "Disable Channel";
+    case 0x05:
+      return "Reset Channel";
+    case 0x06:
+      return "Enable Channel Network TX";
+    case 0x07:
+      return "Disable Channel Network TX";
+    case 0x08:
+      return "AEN Enable";
+    case 0x09:
+      return "Set Link";
+    case 0x0A:
+      return "Get Link Status";
+    case 0x0B:
+      return "Set VLAN Filter";
+    case 0x0C:
+      return "Enable VLAN";
+    case 0x0D:
+      return "Disable VLAN";
+    case 0x0E:
+      return "Set MAC Address";
+    case 0x10:
+      return "Enable Broadcast Filtering";
+    case 0x11:
+      return "Disable Broadcast Filtering";
+    case 0x12:
+      return "Enable Global Multicast Filtering";
+    case 0x13:
+      return "Disable Global Multicast Filtering";
+    case 0x14:
+      return "Set NC-SI Flow Control";
+    case 0x15:
+      return "Get Version ID";
+    case 0x16:
+      return "Get Capabilities";
+    case 0x17:
+      return "Get Parameters";
+    case 0x18:
+      return "Get Controller Packet Statistics";
+    case 0x19:
+      return "Get NC-SI Statistics";
+    case 0x1A:
+      return "Get NC-SI Pass-through Statistics";
+    case 0x50:
+      return "OEM Command";
+    default:
+      return nullptr;
+  }
+}
+
+static void print_packet(const uint8_t* pkt, int len) {
+  auto eth = reinterpret_cast<const ether_header&>(*pkt);
+  print_eth_addr(eth.ether_shost);
+  printf(" ");
+  print_eth_addr(eth.ether_dhost);
+
+  auto ethertype = ntohs(eth.ether_type);
+  printf(" %04x", ethertype);
+
+  if (ethertype != 0x88f8) {
+    printf("\n");
+    return;
+  }
+  if (uint32_t(len) < ETH_HLEN + sizeof(ncsi_header)) {
+    printf(": len is too small for NCSI header: %d\n", len);
+    return;
+  }
+  auto ncsi = reinterpret_cast<const ncsi_header&>(*&pkt[ETH_HLEN]);
+  printf(" %02x %s\n", ncsi.control_packet_type,
+         ncsi_type_to_string(ncsi.control_packet_type));
+}
+
 int main(int argc, char** argv) {
+  signal(SIGINT, handle_ctrl_c);
+
   if (argc < 2) {
     printf("Usage: %s <interface name>\n", argv[0]);
     return 1;
   }
-  const char *ifname = argv[1];
+  const char* ifname = argv[1];
   int ifindex = if_nametoindex(ifname);
   if (ifindex == 0) {
     perror("if_nametoindex");
@@ -26,6 +141,7 @@ int main(int argc, char** argv) {
     perror("socket");
     return 1;
   }
+  SOCKET = fd;
 
   struct sockaddr_ll sll = {
     .sll_family = AF_PACKET,
@@ -39,25 +155,19 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  for (int i = 0; i < 3; i++) {
+  for (;;) {
     static uint8_t buf[1500];
     ssize_t n = recv(fd, buf, sizeof(buf), 0);
     switch (n) {
       case -1:
         perror("recv");
-        goto done;
+        return 1;
       case 0:
         perror("recv 0");
         break;
       default:
-        for (ssize_t j = 0; j < n; j++) {
-          printf("%02x ", buf[j]);
-        }
-        printf("\n");
+        print_packet(buf, static_cast<int>(n));
         break;
     }
   }
-
-done:
-  close(fd);
 }
