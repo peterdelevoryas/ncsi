@@ -114,144 +114,72 @@ enum NcsiReason {
   UNSUPPORTED_COMMAND_TYPE = 0x7FFF,
 };
 
-// static const char* NcsiTypeToString(uint8_t type) {
-//   type &= 0x80 - 1;
-//   switch (type) {
-//     case 0x00:
-//       return "Clear Initial State";
-//     case 0x01:
-//       return "Select Package";
-//     case 0x02:
-//       return "Deselect Package";
-//     case 0x03:
-//       return "Enable Channel";
-//     case 0x04:
-//       return "Disable Channel";
-//     case 0x05:
-//       return "Reset Channel";
-//     case 0x06:
-//       return "Enable Channel Network TX";
-//     case 0x07:
-//       return "Disable Channel Network TX";
-//     case 0x08:
-//       return "AEN Enable";
-//     case 0x09:
-//       return "Set Link";
-//     case 0x0A:
-//       return "Get Link Status";
-//     case 0x0B:
-//       return "Set VLAN Filter";
-//     case 0x0C:
-//       return "Enable VLAN";
-//     case 0x0D:
-//       return "Disable VLAN";
-//     case 0x0E:
-//       return "Set MAC Address";
-//     case 0x10:
-//       return "Enable Broadcast Filtering";
-//     case 0x11:
-//       return "Disable Broadcast Filtering";
-//     case 0x12:
-//       return "Enable Global Multicast Filtering";
-//     case 0x13:
-//       return "Disable Global Multicast Filtering";
-//     case 0x14:
-//       return "Set NC-SI Flow Control";
-//     case 0x15:
-//       return "Get Version ID";
-//     case 0x16:
-//       return "Get Capabilities";
-//     case 0x17:
-//       return "Get Parameters";
-//     case 0x18:
-//       return "Get Controller Packet Statistics";
-//     case 0x19:
-//       return "Get NC-SI Statistics";
-//     case 0x1A:
-//       return "Get NC-SI Pass-through Statistics";
-//     case 0x50:
-//       return "OEM Command";
-//     default:
-//       return nullptr;
-//   }
-// }
-
-// static void PrintPacket(const uint8_t* pkt, int len) {
-//   auto eth = reinterpret_cast<const ether_header&>(*pkt);
-//   PrintEthAddr(eth.ether_shost);
-//   printf(" ");
-//   PrintEthAddr(eth.ether_dhost);
-// 
-//   auto ethertype = ntohs(eth.ether_type);
-//   printf(" %04x", ethertype);
-// 
-//   if (ethertype != 0x88f8) {
-//     printf("\n");
-//     return;
-//   }
-//   if (uint32_t(len) < ETH_HLEN + sizeof(NcsiHeader)) {
-//     printf(": len is too small for NCSI header: %d\n", len);
-//     return;
-//   }
-//   auto ncsi = reinterpret_cast<const NcsiHeader&>(*&pkt[ETH_HLEN]);
-//   printf(" %02x %s\n", ncsi.control_packet_type,
-//          NcsiTypeToString(ncsi.control_packet_type));
-// }
-// 
-// constexpr auto NCSI_MAX_PAYLOAD = 172;
-// constexpr auto NCSI_MAX_LEN = sizeof(NcsiHeader)
-//                             + NCSI_MAX_PAYLOAD + 4;
-// 
-// static void DeselectPackage(const NcsiHeader& command) {
-//   uint8_t pkt[ETH_HLEN + NCSI_MAX_LEN];
-//   memset(pkt, 0, sizeof(pkt));
-// 
-//   auto eth = reinterpret_cast<ether_header&>(*&pkt[0]);
-//   memset(&eth.ether_dhost, 0xFF, ETH_ALEN);
-//   memset(&eth.ether_shost, 0xFF, ETH_ALEN);
-//   eth.ether_type = htons(0x88f8);
-// 
-//   auto response = reinterpret_cast<NcsiHeader&>(*&pkt[ETH_HLEN]);
-//   response.mc_id = 0x00; // Should be copied from command for AEN.
-//   response.header_revision = 0x01;
-//   response.iid = command.iid;
-//   response.control_packet_type = 0x80 + command.control_packet_type;
-//   response.channel_id = command.channel_id;
-//   response.payload_length = htons(4);
-//   response.code = htons(COMMAND_COMPLETED);
-//   response.reason = htons(NO_ERROR_REASON);
-// }
-// 
-// static void HandleNcsiCommand(const NcsiHeader& command) {
-//   switch (command.control_packet_type) {
-//     case DESELECT_PACKAGE:
-//       DeselectPackage(command);
-//       break;
-//     default:
-//       printf("Unimplemented NCSI command: %02x %s\n",
-//              command.control_packet_type,
-//              NcsiTypeToString(command.control_packet_type));
-//       break;
-//   }
-// }
-// 
-// static void HandlePacket(const uint8_t* pkt, int len) {
-//   PrintPacket(pkt, len);
-// 
-//   auto eth = reinterpret_cast<const ether_header&>(*pkt);
-//   if (ntohs(eth.ether_type) != 0x88f8) {
-//     return;
-//   }
-//   if (uint32_t(len) < ETH_HLEN + sizeof(NcsiHeader)) {
-//     printf(": len is too small for NCSI header: %d\n", len);
-//     return;
-//   }
-//   auto command = reinterpret_cast<const NcsiHeader&>(*&pkt[ETH_HLEN]);
-//   HandleNcsiCommand(command);
-// }
+static const char* NcsiTypeToString(uint8_t type) {
+  type &= 0x80 - 1;
+  switch (type) {
+    case 0x00:
+      return "Clear Initial State";
+    case 0x01:
+      return "Select Package";
+    case 0x02:
+      return "Deselect Package";
+    case 0x03:
+      return "Enable Channel";
+    case 0x04:
+      return "Disable Channel";
+    case 0x05:
+      return "Reset Channel";
+    case 0x06:
+      return "Enable Channel Network TX";
+    case 0x07:
+      return "Disable Channel Network TX";
+    case 0x08:
+      return "AEN Enable";
+    case 0x09:
+      return "Set Link";
+    case 0x0A:
+      return "Get Link Status";
+    case 0x0B:
+      return "Set VLAN Filter";
+    case 0x0C:
+      return "Enable VLAN";
+    case 0x0D:
+      return "Disable VLAN";
+    case 0x0E:
+      return "Set MAC Address";
+    case 0x10:
+      return "Enable Broadcast Filtering";
+    case 0x11:
+      return "Disable Broadcast Filtering";
+    case 0x12:
+      return "Enable Global Multicast Filtering";
+    case 0x13:
+      return "Disable Global Multicast Filtering";
+    case 0x14:
+      return "Set NC-SI Flow Control";
+    case 0x15:
+      return "Get Version ID";
+    case 0x16:
+      return "Get Capabilities";
+    case 0x17:
+      return "Get Parameters";
+    case 0x18:
+      return "Get Controller Packet Statistics";
+    case 0x19:
+      return "Get NC-SI Statistics";
+    case 0x1A:
+      return "Get NC-SI Pass-through Statistics";
+    case 0x50:
+      return "OEM Command";
+    default:
+      return nullptr;
+  }
+}
 
 static void PrintNcsiHeader(const NcsiHeader& h) {
-  printf("mc_id=0x%02x rev=0x%02x iid=%d type=0x%02x chan=0x%02x len=0x%02x", h.mc_id, h.header_revision, h.iid, h.type, h.channel_id, ntohs(h.payload_length));
+  printf("mc_id=0x%02x rev=0x%02x iid=%d type=0x%02x(%s) chan=0x%02x len=0x%02x",
+         h.mc_id, h.header_revision, h.iid, h.type, NcsiTypeToString(h.type),
+         h.channel_id, ntohs(h.payload_length));
 }
 
 static uint32_t Checksum(const uint16_t* p, size_t n) {
@@ -294,7 +222,9 @@ static NcsiResponsePacket GenerateResponse(const NcsiCommandPacket& command) {
       break;
   }
 
-  uint32_t checksum = Checksum(reinterpret_cast<const uint16_t*>(&response.ncsi), (sizeof(response.ncsi) + 4) / 2);
+  auto p = reinterpret_cast<const uint16_t*>(&response.ncsi);
+  auto n = (sizeof(response.ncsi) + sizeof(__be16) * 2) / sizeof(uint16_t);
+  uint32_t checksum = Checksum(p, n);
   response.checksum = htonl(checksum);
 
   printf("NcsiResponsePacket ");
@@ -303,46 +233,6 @@ static NcsiResponsePacket GenerateResponse(const NcsiCommandPacket& command) {
 
   return response;
 }
-
-// static size_t GenerateResponse(const EthernetPacket& command, EthernetPacket& response) {
-//   printf("Generating response for command type 0x%02x\n", command.type);
-// 
-//   memset(&response, 0, sizeof(response));
-// 
-//   memset(response.eth.src, 0xFF, sizeof(response.eth.src));
-//   memset(response.eth.dst, 0xFF, sizeof(response.eth.dst));
-//   response.eth.type = htons(NCSI_ETHERTYPE);
-// 
-//   response.ncsi.mc_id           = command.ncsi.mc_id;
-//   response.ncsi.header_revision = 0x01;
-//   response.ncsi.iid             = command.ncsi.iid;
-//   response.ncsi.type            = 0x80 + command.ncsi.type;
-//   response.ncsi.channel_id      = command.ncsi.channel_id;
-//   response.ncsi.payload_length  = htons(4);
-// 
-//   response.code   = htons(COMMAND_COMPLETED);
-//   response.reason = htons(NO_ERROR_REASON);
-// 
-//   switch (command.ncsi.type) {
-//     case CLEAR_INITIAL_STATE:
-//     case SELECT_PACKAGE:
-//     case ENABLE_CHANNEL:
-//     case DISABLE_CHANNEL:
-//     case RESET_CHANNEL:
-//     case GET_LINK_STATUS:
-//       break;
-//     case DESELECT_PACKAGE:
-//       response.ncsi.channel_id = 0x00;
-//       break;
-//     default:
-//       printf("Unimplemented NCSI type: 0x%02x\n", command.ncsi.type);
-//       response.code = htons(COMMAND_UNSUPPORTED);
-//       response.reason = htons(UNSUPPORTED_COMMAND_TYPE);
-//       break;
-//   }
-// 
-//   return sizeof(NcsiResponsePacket);
-// }
 
 int main(int argc, char** argv) {
   if (argc < 2) {
