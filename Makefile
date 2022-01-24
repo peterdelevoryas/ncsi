@@ -1,6 +1,6 @@
 all: ncsi
 
-CXXFLAGS := -std=c++20 -O0 -g -Wall -Werror -fno-exceptions
+CXXFLAGS := -std=c++17 -O0 -g -Wall -Werror -fno-exceptions
 
 ncsi: main.cpp
 	$(CXX) $(CXXFLAGS) $< -o $@
