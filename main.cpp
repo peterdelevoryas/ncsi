@@ -40,7 +40,13 @@ struct NcsiHeader {
 struct __attribute__((packed)) NcsiCommandPacket {
   EthernetHeader eth;
   NcsiHeader ncsi;
-  uint8_t min_size_padding[ETHERNET_MIN_FRAME_SIZE - sizeof(EthernetHeader) - sizeof(NcsiHeader)];
+  __be32 checksum;
+  uint8_t min_size_padding[
+    ETHERNET_MIN_FRAME_SIZE
+    - sizeof(EthernetHeader)
+    - sizeof(NcsiHeader)
+    - sizeof(__be32)
+  ];
 };
 
 struct __attribute__((packed)) NcsiResponsePacket {
@@ -48,7 +54,14 @@ struct __attribute__((packed)) NcsiResponsePacket {
   NcsiHeader ncsi;
   __be16 code;
   __be16 reason;
-  uint8_t min_size_padding[ETHERNET_MIN_FRAME_SIZE - sizeof(EthernetHeader) - sizeof(NcsiHeader) - sizeof(__be16) * 2];
+  __be32 checksum;
+  uint8_t min_size_padding[
+    ETHERNET_MIN_FRAME_SIZE
+    - sizeof(EthernetHeader)
+    - sizeof(NcsiHeader)
+    - sizeof(__be16) * 2
+    - sizeof(__be32)
+  ];
 };
 
 static_assert(sizeof(NcsiCommandPacket) == ETHERNET_MIN_FRAME_SIZE, "");
@@ -241,6 +254,14 @@ static void PrintNcsiHeader(const NcsiHeader& h) {
   printf("mc_id=0x%02x rev=0x%02x iid=%d type=0x%02x chan=0x%02x len=0x%02x", h.mc_id, h.header_revision, h.iid, h.type, h.channel_id, ntohs(h.payload_length));
 }
 
+static uint32_t Checksum(const uint16_t* p, size_t n) {
+  uint32_t checksum = 0;
+  for (size_t i = 0; i < n; i++) {
+    checksum += htons(p[i]);
+  }
+  return ~checksum + 1;
+}
+
 static NcsiResponsePacket GenerateResponse(const NcsiCommandPacket& command) {
   printf("NcsiCommandPacket  ");
   PrintNcsiHeader(command.ncsi);
@@ -273,9 +294,12 @@ static NcsiResponsePacket GenerateResponse(const NcsiCommandPacket& command) {
       break;
   }
 
+  uint32_t checksum = Checksum(reinterpret_cast<const uint16_t*>(&response.ncsi), (sizeof(response.ncsi) + 4) / 2);
+  response.checksum = htonl(checksum);
+
   printf("NcsiResponsePacket ");
   PrintNcsiHeader(response.ncsi);
-  printf("\n");
+  printf(" checksum=0x%08x\n", checksum);
 
   return response;
 }
