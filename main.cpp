@@ -19,6 +19,7 @@ T max(T a, T b) {
 
 constexpr uint16_t NCSI_ETHERTYPE = 0x88f8;
 constexpr size_t ETHERNET_MIN_FRAME_SIZE = 64;
+constexpr uint32_t MELLANOX_MF_ID = 0x8119;
 
 struct EthernetHeader {
   uint8_t src[6];
@@ -39,9 +40,9 @@ struct NcsiHeader {
 };
 
 struct __attribute__((packed)) MellanoxCommandHeader {
-  uint8_t command_rev;
-  uint8_t command_id;
-  uint8_t parameter;
+  uint8_t rev;
+  uint8_t id;
+  uint8_t param;
   union {
     uint8_t pf_index;
   };
@@ -51,7 +52,7 @@ struct __attribute__((packed)) MellanoxCommandHeader {
 struct __attribute__((packed)) OemCommandHeader {
   __be32 mf_id; // IANA Enterprise ID.
   union {
-    MellanoxCommandHeader mlx;
+    MellanoxCommandHeader mellanox;
   };
 };
 
@@ -67,13 +68,39 @@ union NcsiCommandPacket {
   uint8_t bytes[ETHERNET_MIN_FRAME_SIZE];
 };
 
+struct __attribute__((packed)) MellanoxResponseHeader {
+  uint8_t rev;
+  uint8_t id;
+  uint8_t param;
+  uint8_t host;
+  union {
+    struct __attribute__((packed)) {
+      uint8_t status;
+      uint8_t reserved[3];
+      uint8_t mc_mac_address[6];
+      uint8_t padding[2];
+      __be32 checksum;
+    } gma;
+  };
+};
+
+struct __attribute__((packed)) OemResponseHeader {
+  __be32 mf_id;
+  union {
+    MellanoxResponseHeader mellanox;
+  };
+};
+
 union NcsiResponsePacket {
   struct __attribute__((packed)) {
     EthernetHeader eth;
     NcsiHeader ncsi;
     __be16 code;
     __be16 reason;
-    __be32 checksum;
+    union {
+      OemResponseHeader oem;
+      __be32 checksum;
+    };
   };
   uint8_t bytes[ETHERNET_MIN_FRAME_SIZE];
 };
@@ -204,8 +231,36 @@ static uint32_t Checksum(const uint16_t* p, size_t n) {
   return ~checksum + 1;
 }
 
-static void GenerateOemResponse(const OemCommandHeader& command) {
+static void GenerateMellanoxResponse(const MellanoxCommandHeader& command,
+                                     NcsiResponsePacket& response) {
+  printf("Mellanox Command: rev=0x%02x command=0x%02x param=0x%02x\n",
+         command.rev, command.id, command.param);
+
+  if (command.id == 0x00 && command.param == 0x1B) {
+    response.ncsi.length = htons(24);
+
+    return;
+  }
+
+  printf("Unsupported Mellanox command ID: 0x%02x\n", command.id);
+  response.code   = htons(COMMAND_UNSUPPORTED);
+  response.reason = htons(UNSUPPORTED_COMMAND_TYPE);
+}
+
+static void GenerateOemResponse(const OemCommandHeader& command,
+                                NcsiResponsePacket& response) {
   printf("OEM Command: mf_id=0x%08x\n", ntohl(command.mf_id));
+  auto mf_id = ntohl(command.mf_id);
+  switch (mf_id) {
+    case MELLANOX_MF_ID:
+      GenerateMellanoxResponse(command.mellanox, response);
+      break;
+    default:
+      printf("Unsupported manufacturer: 0x%08x\n", mf_id);
+      response.code   = htons(COMMAND_UNSUPPORTED);
+      response.reason = htons(UNSUPPORTED_COMMAND_TYPE);
+      break;
+  }
 }
 
 static NcsiResponsePacket GenerateResponse(const NcsiCommandPacket& command) {
@@ -234,7 +289,7 @@ static NcsiResponsePacket GenerateResponse(const NcsiCommandPacket& command) {
     case SELECT_PACKAGE:
       break;
     case OEM_COMMAND:
-      GenerateOemResponse(command.oem);
+      GenerateOemResponse(command.oem, response);
       break;
     default:
       printf("Unsupported command type: 0x%02x\n", command.ncsi.type);
