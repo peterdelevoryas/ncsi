@@ -213,12 +213,12 @@ static void PrintNcsiHeader(const NcsiHeader& h) {
 }
 
 static uint32_t Checksum(const uint8_t* p, size_t n) {
+  printf("Checksum(%p, %zu)\n", p, n);
+
   assert(n % 2 == 0);
   uint32_t checksum = 0;
   for (size_t i = 0; i + 1 < n; i += 2) {
-    uint32_t a = uint32_t(p[i]) << 8;
-    uint32_t b = p[i + 1];
-    checksum += a | b;
+    checksum += (uint32_t(p[i]) << 8) + uint32_t(p[i + 1]);
   }
   return ~checksum + 1;
 }
