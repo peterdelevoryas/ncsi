@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <cstddef>
 #include <sys/socket.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
@@ -37,31 +38,44 @@ struct NcsiHeader {
   uint32_t reserved3;
 };
 
-struct __attribute__((packed)) NcsiCommandPacket {
-  EthernetHeader eth;
-  NcsiHeader ncsi;
+struct __attribute__((packed)) MellanoxCommandHeader {
+  uint8_t command_rev;
+  uint8_t command_id;
+  uint8_t parameter;
+  union {
+    uint8_t pf_index;
+  };
   __be32 checksum;
-  uint8_t min_size_padding[
-    ETHERNET_MIN_FRAME_SIZE
-    - sizeof(EthernetHeader)
-    - sizeof(NcsiHeader)
-    - sizeof(__be32)
-  ];
 };
 
-struct __attribute__((packed)) NcsiResponsePacket {
-  EthernetHeader eth;
-  NcsiHeader ncsi;
-  __be16 code;
-  __be16 reason;
-  __be32 checksum;
-  uint8_t min_size_padding[
-    ETHERNET_MIN_FRAME_SIZE
-    - sizeof(EthernetHeader)
-    - sizeof(NcsiHeader)
-    - sizeof(__be16) * 2
-    - sizeof(__be32)
-  ];
+struct __attribute__((packed)) OemCommandHeader {
+  __be32 mf_id; // IANA Enterprise ID.
+  union {
+    MellanoxCommandHeader mlx;
+  };
+};
+
+union NcsiCommandPacket {
+  struct __attribute__((packed)) {
+    EthernetHeader eth;
+    NcsiHeader ncsi;
+    union {
+      OemCommandHeader oem;
+      __be32 checksum;
+    };
+  };
+  uint8_t bytes[ETHERNET_MIN_FRAME_SIZE];
+};
+
+union NcsiResponsePacket {
+  struct __attribute__((packed)) {
+    EthernetHeader eth;
+    NcsiHeader ncsi;
+    __be16 code;
+    __be16 reason;
+    __be32 checksum;
+  };
+  uint8_t bytes[ETHERNET_MIN_FRAME_SIZE];
 };
 
 static_assert(sizeof(NcsiCommandPacket) == ETHERNET_MIN_FRAME_SIZE, "");
@@ -190,6 +204,10 @@ static uint32_t Checksum(const uint16_t* p, size_t n) {
   return ~checksum + 1;
 }
 
+static void GenerateOemResponse(const OemCommandHeader& command) {
+  printf("OEM Command: mf_id=0x%08x\n", ntohl(command.mf_id));
+}
+
 static NcsiResponsePacket GenerateResponse(const NcsiCommandPacket& command) {
   printf("NcsiCommandPacket  ");
   PrintNcsiHeader(command.ncsi);
@@ -214,6 +232,9 @@ static NcsiResponsePacket GenerateResponse(const NcsiCommandPacket& command) {
       break;
     case CLEAR_INITIAL_STATE:
     case SELECT_PACKAGE:
+      break;
+    case OEM_COMMAND:
+      GenerateOemResponse(command.oem);
       break;
     default:
       printf("Unsupported command type: 0x%02x\n", command.ncsi.type);
