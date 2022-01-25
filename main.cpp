@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
-#include <cstddef>
+#include <cassert>
 #include <sys/socket.h>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
@@ -43,10 +43,7 @@ struct __attribute__((packed)) MellanoxCommandHeader {
   uint8_t rev;
   uint8_t id;
   uint8_t param;
-  union {
-    uint8_t pf_index;
-  };
-  __be32 checksum;
+  uint8_t optional;
 };
 
 struct __attribute__((packed)) OemCommandHeader {
@@ -60,10 +57,7 @@ union NcsiCommandPacket {
   struct __attribute__((packed)) {
     EthernetHeader eth;
     NcsiHeader ncsi;
-    union {
-      OemCommandHeader oem;
-      __be32 checksum;
-    };
+    OemCommandHeader oem;
   };
   uint8_t bytes[ETHERNET_MIN_FRAME_SIZE];
 };
@@ -72,14 +66,12 @@ struct __attribute__((packed)) MellanoxResponseHeader {
   uint8_t rev;
   uint8_t id;
   uint8_t param;
-  uint8_t host;
+  uint8_t optional;
   union {
     struct __attribute__((packed)) {
       uint8_t status;
       uint8_t reserved[3];
       uint8_t mc_mac_address[6];
-      uint8_t padding[2];
-      __be32 checksum;
     } gma;
   };
 };
@@ -97,10 +89,7 @@ union NcsiResponsePacket {
     NcsiHeader ncsi;
     __be16 code;
     __be16 reason;
-    union {
-      OemResponseHeader oem;
-      __be32 checksum;
-    };
+    OemResponseHeader oem;
   };
   uint8_t bytes[ETHERNET_MIN_FRAME_SIZE];
 };
@@ -223,10 +212,13 @@ static void PrintNcsiHeader(const NcsiHeader& h) {
          h.channel_id, ntohs(h.payload_length));
 }
 
-static uint32_t Checksum(const uint16_t* p, size_t n) {
+static uint32_t Checksum(const uint8_t* p, size_t n) {
+  assert(n % 2 == 0);
   uint32_t checksum = 0;
-  for (size_t i = 0; i < n; i++) {
-    checksum += htons(p[i]);
+  for (size_t i = 0; i + 1 < n; i += 2) {
+    uint32_t a = uint32_t(p[i]) << 8;
+    uint32_t b = p[i + 1];
+    checksum += a | b;
   }
   return ~checksum + 1;
 }
@@ -236,9 +228,17 @@ static void GenerateMellanoxResponse(const MellanoxCommandHeader& command,
   printf("Mellanox Command: rev=0x%02x command=0x%02x param=0x%02x\n",
          command.rev, command.id, command.param);
 
-  if (command.id == 0x00 && command.param == 0x1B) {
-    response.ncsi.length = htons(24);
+  response.oem.mf_id = htonl(MELLANOX_MF_ID);
+  response.oem.mellanox.rev = command.rev;
+  response.oem.mellanox.id = command.id;
+  response.oem.mellanox.param = command.param;
+  response.oem.mellanox.optional = command.optional;
 
+  if (command.id == 0x00 && command.param == 0x1B) {
+    response.ncsi.payload_length = htons(24);
+    response.oem.mellanox.gma.status = 0;
+    uint8_t eth_addr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    memcpy(response.oem.mellanox.gma.mc_mac_address, eth_addr, sizeof(eth_addr));
     return;
   }
 
@@ -298,10 +298,12 @@ static NcsiResponsePacket GenerateResponse(const NcsiCommandPacket& command) {
       break;
   }
 
-  auto p = reinterpret_cast<const uint16_t*>(&response.ncsi);
-  auto n = (sizeof(response.ncsi) + sizeof(__be16) * 2) / sizeof(uint16_t);
+  auto payload_length = ntohs(response.ncsi.payload_length);
+  auto p = reinterpret_cast<uint8_t*>(&response.ncsi);
+  auto n = sizeof(response.ncsi) + payload_length;
   uint32_t checksum = Checksum(p, n);
-  response.checksum = htonl(checksum);
+  *reinterpret_cast<__be32*>(&p[sizeof(NcsiHeader) + payload_length])
+    = htonl(checksum);
 
   printf("NcsiResponsePacket ");
   PrintNcsiHeader(response.ncsi);
